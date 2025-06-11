@@ -1,147 +1,167 @@
 import streamlit as st
-import sqlite3
-import pickle
 import pandas as pd
-import requests
-import scipy.sparse as sparse
-from streamlit_extras.bottom_container import bottom
-from streamlit_chat_widget import chat_input_widget
+import numpy as np
+import ast
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
+import os
 
-# TMDB API Key from secrets
-tmdb_api_key = st.secrets["TMDB_KEY"]
+st.set_page_config(page_title="🎬 Cine Match", layout="wide")
+st.title("🎬 Cine Match")
+st.markdown("### 🎯 Enter movie title, genre, actor or director in the search bar")
 
-# --- Database Setup ---
-conn = sqlite3.connect('watchhistory.db', check_same_thread=False)
-c = conn.cursor()
-c.execute('''CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE, password TEXT)''')
-c.execute('''CREATE TABLE IF NOT EXISTS history (user_id INTEGER, movie_id INTEGER, ts DATETIME DEFAULT CURRENT_TIMESTAMP)''')
+st.markdown("### 🎞️ Featured Movie Posters")
 
-# --- Helper Functions for Auth and History ---
-def signup(username, password):
-    return c.execute('INSERT OR IGNORE INTO users(username,password) VALUES(?,?)', (username, password)).rowcount
+# Row of poster thumbnails
+row1 = st.columns(4)
+with row1[0]:
+    st.image("2461.jpg", caption="FREDRICK WARDE", use_container_width=True)
+with row1[1]:
+    st.image("2544.jpg", caption="RICHARD LOPUS", use_container_width=True)
+with row1[2]:
+    st.image("2795.jpg", caption="GRIFFTH", use_container_width=True)
+with row1[3]:
+    st.image("2844.jpg", caption="FANTOMAS", use_container_width=True)
 
-def login(username, password):
-    return c.execute('SELECT id FROM users WHERE username=? AND password=?', (username, password)).fetchone()
+row2 = st.columns(4)
+with row2[0]:
+    st.image("2985.jpg", caption="THE FAIRY KING", use_container_width=True)
+with row2[1]:
+    st.image("3014.jpg", caption="A MAN THERE WAS", use_container_width=True)
+with row2[2]:
+    st.image("3016.jpg", caption="THE INSIDE OF THE WHITE SLAVE", use_container_width=True)
+with row2[3]:
+    st.image("3037.jpg", caption="FANTOMAS", use_container_width=True)
 
-def log_history(user_id, movie_id):
-    c.execute('INSERT INTO history(user_id, movie_id) VALUES(?,?)', (user_id, movie_id))
-    conn.commit()
+row3 = st.columns(4)
+with row3[0]:
+    st.image("3419.jpg", caption="THE STUDENT OF PRAGUE", use_container_width=True)
+with row3[1]:
+    st.image("3471.jpg", caption="TRAFFIC IN SOULS", use_container_width=True)
+with row3[2]:
+    st.image("3489.jpg", caption="THE LAST DAY OF POMPEII", use_container_width=True)
+with row3[3]:
+    st.image("3643.jpg", caption="THE AVENGING CONSCIENCE", use_container_width=True)
 
-# --- Load Models and Data ---
+
 @st.cache_data
 def load_data():
-    movies = pd.read_pickle('movies_with_posters.pkl')
-    cosine_sim = pickle.load(open('cosine_sim.pkl', 'rb'))
-    tfidf_vectorizer = pickle.load(open('tfidf_vectorizer.pkl', 'rb'))
-    als_model = pickle.load(open('als_model.pkl', 'rb'))
-    user_to_idx = pickle.load(open('user_to_idx.pkl', 'rb'))
-    movie_to_idx = pickle.load(open('movie_to_idx.pkl', 'rb'))
-    return movies, cosine_sim, tfidf_vectorizer, als_model, user_to_idx, movie_to_idx
+    if os.path.getsize("tmdb_5000_credits.csv") == 0 or os.path.getsize("tmdb_5000_movies.csv") == 0:
+        st.error("❌ One or more files are empty. Please re-upload.")
+        st.stop()
 
-movies, cosine_sim, tfidf_vectorizer, als_model, user_to_idx, movie_to_idx = load_data()
+    movies = pd.read_csv("tmdb_5000_movies.csv")
+    credits = pd.read_csv("tmdb_5000_credits.csv")
+    df = movies.merge(credits, on='title')
 
-# --- Recommendation Functions ---
-def recommend_by_title(title, n=10):
-    idx = movies[movies['original_title'].str.lower() == title.lower()].index
-    if len(idx) == 0:
-        return pd.DataFrame()
-    sim_scores = list(enumerate(cosine_sim[idx[0]]))
-    sim_scores = sorted(sim_scores, key=lambda x: x[1], reverse=True)[1:n+1]
-    return movies.iloc[[i for i, _ in sim_scores]]
+    df['cast'] = df['cast'].fillna('[]')
+    df['crew'] = df['crew'].fillna('[]')
+    df['genres'] = df['genres'].fillna('[]')
 
-def recommend_by_user(user_id, n=10):
-    if user_id not in user_to_idx:
-        return pd.DataFrame()
-    recs = als_model.recommend(user_to_idx[user_id], sparse.csr_matrix(cosine_sim), N=n)
-    return movies.iloc[[i for i, _ in recs]]
+    def get_director(crew_json):
+        try:
+            for member in ast.literal_eval(crew_json):
+                if member.get('job') == 'Director':
+                    return member.get('name', '')
+        except:
+            return ''
+        return ''
 
-@st.cache_data(ttl=3600)
-def load_trending():
-    res = requests.get(f'https://api.themoviedb.org/3/trending/movie/day?api_key={tmdb_api_key}')
-    return res.json().get('results', [])
+    def get_top_cast(cast_json):
+        try:
+            return [member.get('name', '') for member in ast.literal_eval(cast_json)[:3]]
+        except:
+            return []
 
-def show_movies(df):
-    cols = st.columns(4)
-    for idx, (_, row) in enumerate(df.iterrows()):
-        col = cols[idx % 4]
-        col.image(row['poster_url'], use_column_width=True)
-        col.subheader(row['original_title'])
-        col.write(f"Genres: {', '.join(row['genres']) if isinstance(row['genres'], list) else 'N/A'}")
-        col.write(f"Year: {row.get('release_year', 'N/A')} • Rating: {row.get('vote_average', 'N/A')}")
-        if st.session_state.get('user'):
-            col.button("Mark Watched", key=f"watch_{row.name}", on_click=log_history,
-                       args=(st.session_state.user['id'], row['id']))
+    def get_genres(genre_json):
+        try:
+            return ' '.join([genre['name'].lower().replace(" ", "") for genre in ast.literal_eval(genre_json)])
+        except:
+            return ''
 
-# --- Page Config and Sidebar ---
-st.set_page_config("MovieVerse PRO", layout="wide")
+    df['director'] = df['crew'].apply(get_director)
+    df['cast'] = df['cast'].apply(get_top_cast)
+    df['genres'] = df['genres'].apply(get_genres)
 
-st.sidebar.title("🔐 Account")
-if 'user' not in st.session_state:
-    username = st.sidebar.text_input("Username")
-    password = st.sidebar.text_input("Password", type="password")
-    if st.sidebar.button("Login"):
-        res = login(username, password)
-        if res:
-            st.session_state.user = {'id': res[0], 'username': username}
-        else:
-            st.sidebar.error("Invalid credentials")
-    if st.sidebar.button("Sign up"):
-        if signup(username, password):
-            st.sidebar.success("Account created. Please login.")
-        else:
-            st.sidebar.error("Username already exists")
-    st.stop()
-else:
-    st.sidebar.write(f"Welcome, {st.session_state.user['username']}")
-    if st.sidebar.button("Logout"):
-        del st.session_state.user
+    def create_tags(row):
+        cast = ' '.join(row['cast']) if isinstance(row['cast'], list) else ''
+        return f"{cast} {row['director']} {row['genres']}"
 
-st.sidebar.title("🎛 Filters")
-genres = sorted({g for sub in movies['genres'] for g in sub})
-selected_genres = st.sidebar.multiselect("Genres", genres)
-year_range = st.sidebar.slider("Year", 1950, 2025, (2000, 2025))
-rating_min = st.sidebar.slider("Min Rating", 0.0, 10.0, 7.0)
+    df['tags'] = df.apply(create_tags, axis=1)
+    return df[['title', 'genres', 'cast', 'director', 'tags']]
 
-st.sidebar.title("🌐 Language")
-language = st.sidebar.selectbox("API Language", ['en', 'fr', 'es', 'hi', 'ta'])
-
-# --- Main Area ---
-st.header("🔥 Trending Today")
-trending = load_trending()[:8]
-cols = st.columns(4)
-for i, movie in enumerate(trending):
-    with cols[i % 4]:
-        st.image(f"https://image.tmdb.org/t/p/w200{movie['poster_path']}", use_column_width=True)
-        st.caption(f"{movie['title']} ({movie['release_date'][:4]})")
-
-st.header("🎬 Search or Get Recommendations")
-mode = st.radio("Mode", ["By Title", "By User ID"], horizontal=True)
-query = st.text_input("Enter title or user ID")
-
-results = pd.DataFrame()
-if mode == "By Title" and query:
-    results = recommend_by_title(query)
-elif mode == "By User ID" and query:
+@st.cache_data
+def load_metadata():
     try:
-        uid = int(query)
-        results = recommend_by_user(uid)
+        meta = pd.read_csv("movies_metadata.csv", low_memory=False)
+        meta = meta[meta['poster_path'].notna()]
+        meta = meta[['title', 'poster_path']]
+        return meta
     except:
-        st.error("Invalid user ID")
+        return pd.DataFrame(columns=['title', 'poster_path'])
 
-# Filter results
-if not results.empty:
-    results = results[(results['release_year'].between(*year_range)) &
-                      (results['vote_average'] >= rating_min)]
-    if selected_genres:
-        results = results[results['genres'].apply(lambda gs: any(g in gs for g in selected_genres))]
+# Load data
+df = load_data()
+metadata = load_metadata()
 
-if results.empty:
-    st.info("No results. Try different input or filters.")
-else:
-    show_movies(results)
+# TF-IDF & Cosine Similarity
+vectorizer = TfidfVectorizer(stop_words='english', max_features=5000)
+tfidf_matrix = vectorizer.fit_transform(df['tags'])
+cosine_sim = cosine_similarity(tfidf_matrix)
 
-# --- Chatbot with voice input ---
-with bottom():
-    chat = chat_input_widget()
-if chat and chat.get("text"):
-    st.write(f"**Bot (echo)**: {chat['text']}")
+def recommend_movies(query):
+    query = query.lower()
+    matches = df[
+        df['title'].str.lower().str.contains(query) |
+        df['genres'].str.lower().str.contains(query) |
+        df['director'].str.lower().str.contains(query) |
+        df['cast'].apply(lambda x: any(query in member.lower() for member in x) if isinstance(x, list) else False)
+    ]
+
+    if matches.empty:
+        return pd.DataFrame(), "❌ No matches found."
+
+    idx = matches.index[0]
+    scores = sorted(list(enumerate(cosine_sim[idx])), key=lambda x: x[1], reverse=True)[1:11]
+    movie_indices = [i[0] for i in scores]
+
+    return df.iloc[movie_indices][['title', 'genres', 'cast', 'director']], "✅ Here are your movie recommendations:"
+
+# Sidebar
+st.sidebar.title("🔍 Search")
+user_input = st.sidebar.text_input("Enter movie title, genre, actor or director")
+
+st.sidebar.markdown("## 🎥 Random Movie Posters")
+if not metadata.empty:
+    sample_posters = metadata.sample(3)
+    for _, row in sample_posters.iterrows():
+        poster_url = f"https://image.tmdb.org/t/p/w500{row['poster_path']}"
+        st.sidebar.image(poster_url, caption=row['title'], use_container_width=True)
+
+# Recommendation Anchor
+st.markdown("<a name='recommendations'></a>", unsafe_allow_html=True)
+
+# Show Recommendations
+if user_input:
+    st.experimental_set_query_params(scroll="recommendations")
+    recommendations, msg = recommend_movies(user_input)
+    st.subheader(msg)
+    for _, row in recommendations.iterrows():
+        st.markdown(f"### 🎬 {row['title']}")
+        st.markdown(f"**Genres:** {row['genres']}")
+        st.markdown(f"**Director:** {row['director']}")
+        st.markdown(f"**Top Cast:** {', '.join(row['cast']) if isinstance(row['cast'], list) else row['cast']}")
+        st.markdown("---")
+
+    # Smooth scroll via JavaScript
+    st.markdown(
+        """
+        <script>
+        const anchor = document.querySelector("a[name='recommendations']");
+        if (anchor) {
+            anchor.scrollIntoView({behavior: 'smooth'});
+        }
+        </script>
+        """,
+        unsafe_allow_html=True
+    )
