@@ -7,14 +7,21 @@ from sklearn.metrics.pairwise import cosine_similarity
 import random
 import os
 
-st.set_page_config(page_title="🎬 MovieVerse: Movie Pedia", layout="wide")
-st.title("🎬 MovieVerse: Movie Pedia")
+st.set_page_config(page_title="🎬 AI Movie Recommender", layout="wide")
+st.title("🎬 AI-Based Movie Recommendation System")
 
 @st.cache_data
-def load_main_data():
+def load_data():
+    if os.path.getsize("tmdb_5000_credits.csv") == 0 or os.path.getsize("tmdb_5000_movies.csv") == 0:
+        st.error("❌ One or more files are empty. Please re-upload.")
+        st.stop()
+
+    # Load TMDB data
     movies = pd.read_csv("tmdb_5000_movies.csv")
     credits = pd.read_csv("tmdb_5000_credits.csv")
     df = movies.merge(credits, on='title')
+
+    # Clean columns
     df['cast'] = df['cast'].fillna('[]')
     df['crew'] = df['crew'].fillna('[]')
     df['genres'] = df['genres'].fillna('[]')
@@ -36,9 +43,9 @@ def load_main_data():
 
     def get_genres(genre_json):
         try:
-            return [genre['name'] for genre in ast.literal_eval(genre_json)]
+            return ' '.join([genre['name'].lower().replace(" ", "") for genre in ast.literal_eval(genre_json)])
         except:
-            return []
+            return ''
 
     df['director'] = df['crew'].apply(get_director)
     df['cast'] = df['cast'].apply(get_top_cast)
@@ -46,68 +53,87 @@ def load_main_data():
 
     def create_tags(row):
         cast = ' '.join(row['cast']) if isinstance(row['cast'], list) else ''
-        genres = ' '.join(row['genres']) if isinstance(row['genres'], list) else ''
-        return f"{cast} {row['director']} {genres}"
+        return f"{cast} {row['director']} {row['genres']}"
 
     df['tags'] = df.apply(create_tags, axis=1)
-    return df
+
+    return df[['title', 'genres', 'cast', 'director', 'tags']]
 
 @st.cache_data
 def load_metadata():
-    meta = pd.read_csv("movies_metadata.csv", low_memory=False)
-    meta = meta[meta['poster_path'].notna()]
-    meta = meta[['title', 'poster_path']].dropna()
-    return meta
+    try:
+        metadata = pd.read_csv("/mnt/data/8be23759-6eba-4327-805e-39a6b8951bfd.csv", low_memory=False)
+        metadata = metadata[metadata['poster_path'].notna()]
+        metadata = metadata[['title', 'poster_path']]
+        metadata['title_lower'] = metadata['title'].str.lower()
+        return metadata
+    except:
+        return pd.DataFrame(columns=['title', 'poster_path', 'title_lower'])
 
-df = load_main_data()
+# Load data
+df = load_data()
 metadata = load_metadata()
 
+# TF-IDF
 vectorizer = TfidfVectorizer(stop_words='english', max_features=5000)
 tfidf_matrix = vectorizer.fit_transform(df['tags'])
 cosine_sim = cosine_similarity(tfidf_matrix)
 
-def get_recommendations(query):
+# Recommendation engine
+def recommend_movies(query):
     query = query.lower()
     matches = df[
         df['title'].str.lower().str.contains(query) |
-        df['genres'].apply(lambda genres: any(query in g.lower() for g in genres)) |
+        df['genres'].str.lower().str.contains(query) |
         df['director'].str.lower().str.contains(query) |
-        df['cast'].apply(lambda cast: any(query in c.lower() for c in cast))
+        df['cast'].apply(lambda x: any(query in member.lower() for member in x) if isinstance(x, list) else False)
     ]
 
     if matches.empty:
-        return pd.DataFrame(), "No matches found."
+        return pd.DataFrame(), "❌ No matches found."
 
     idx = matches.index[0]
-    scores = list(enumerate(cosine_sim[idx]))
-    scores = sorted(scores, key=lambda x: x[1], reverse=True)[1:9]
-    indices = [i[0] for i in scores]
-    return df.iloc[indices], "Found some great matches based on your input! 🎯"
+    scores = sorted(list(enumerate(cosine_sim[idx])), key=lambda x: x[1], reverse=True)[1:11]
+    movie_indices = [i[0] for i in scores]
 
-st.sidebar.title("🎭 Chatbot")
-user_input = st.sidebar.text_input("Ask me anything about movies!", key="chat")
+    recommended = df.iloc[movie_indices][['title', 'genres', 'cast', 'director']]
+    recommended['title_lower'] = recommended['title'].str.lower()
+    return recommended, "✅ Here are your movie recommendations:"
 
-st.sidebar.markdown("---")
+# Sidebar input
+st.sidebar.title("🔍 Search")
+user_input = st.sidebar.text_input("Enter movie title, genre, actor or director")
 
-st.markdown("#### Search movies by title:")
-search_query = st.text_input("Enter a movie name, genre, actor or director")
+# Background section - random posters
+st.sidebar.markdown("## 🎥 Random Movie Posters")
+if not metadata.empty:
+    sample_posters = metadata.sample(3)
+    for _, row in sample_posters.iterrows():
+        poster_url = f"https://image.tmdb.org/t/p/w500{row['poster_path']}"
+        st.sidebar.image(poster_url, caption=row['title'], use_column_width=True)
 
-if user_input or search_query:
-    results, msg = get_recommendations(user_input if user_input else search_query)
-    st.markdown(f"### {msg}")
-    if not results.empty:
-        cols = st.columns(4)
-        for i, (_, row) in enumerate(results.iterrows()):
-            with cols[i % 4]:
-                st.subheader(row['title'])
-                poster_row = metadata[metadata['title'].str.lower() == row['title'].lower()]
+# Results
+if user_input:
+    recommendations, msg = recommend_movies(user_input)
+    st.subheader(msg)
+    if recommendations.empty:
+        st.warning("Try a different search.")
+    else:
+        for _, row in recommendations.iterrows():
+            col1, col2 = st.columns([1, 4])
+            with col1:
+                poster_row = metadata[metadata['title_lower'] == row['title_lower']]
                 if not poster_row.empty:
-                    poster_url = "https://image.tmdb.org/t/p/w500" + poster_row.iloc[0]['poster_path']
-                    st.image(poster_url, use_column_width=True)
-                genres_str = ", ".join(row['genres'])
-                st.markdown(f"**Genres:** {genres_str}")
+                    poster_url = f"https://image.tmdb.org/t/p/w500{poster_row.iloc[0]['poster_path']}"
+                    st.image(poster_url, width=120)
+                else:
+                    st.image("https://via.placeholder.com/120x180?text=No+Image", width=120)
+            with col2:
+                st.markdown(f"### 🎬 {row['title']}")
+                st.markdown(f"**Genres:** {row['genres']}")
                 st.markdown(f"**Director:** {row['director']}")
-                st.markdown(f"**Top Cast:** {', '.join(row['cast'])}")
+                st.markdown(f"**Top Cast:** {', '.join(row['cast']) if isinstance(row['cast'], list) else row['cast']}")
                 st.markdown("---")
 else:
-    st.info("Enter a keyword or movie to get started.")
+    st.info("🔎 Enter a movie, genre, actor, or director to get recommendations.")
+
