@@ -11,7 +11,7 @@ st.title("🎬 AI-Based Movie Recommendation System")
 st.title("🎬 Cine Match")
 
 # 🔽 Display 4 small images in a row at the top
-col1, col2, col3, col4 = st.columns(4)
+col1, col2, col3, col4,col5,col6,col7,col8,col9 = st.columns(9)
 with col1:
     st.image("2461.jpg", caption="2461", use_container_width=True)
 with col2:
