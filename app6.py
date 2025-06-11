@@ -6,31 +6,40 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 import os
 
+# Streamlit Page Setup
 st.set_page_config(page_title="🎬 AI Movie Recommender", layout="wide")
-st.title("🎬 AI-Based Movie Recommendation System")
 st.title("🎬 Cine Match")
+st.markdown("### 🎯 Enter movie title, genre, actor or director in the search bar")
 
-# 🔽 Display 4 small images in a row at the top
-col1, col2, col3, col4,col5,col6,col7,col8,col9 = st.columns(9)
-with col1:
+# 🔽 Display 8 images in a 4x2 grid + 1 centered below
+st.markdown("### 🎞️ Featured Movie Posters")
+
+# First row (4 images)
+row1 = st.columns(4)
+with row1[0]:
     st.image("2461.jpg", caption="2461", use_container_width=True)
-with col2:
+with row1[1]:
     st.image("2544.jpg", caption="2544", use_container_width=True)
-with col3:
+with row1[2]:
     st.image("2795.jpg", caption="2795", use_container_width=True)
-with col4:
+with row1[3]:
     st.image("2844.jpg", caption="2844", use_container_width=True)
-with col5:
-    st.image("2985.jpg", caption="2844", use_container_width=True)
-with col6:
-    st.image("3014.jpg", caption="2844", use_container_width=True)
-with col7:
-    st.image("3016.jpg", caption="2844", use_container_width=True)
-with col8:
-    st.image("3037.jpg", caption="2844", use_container_width=True)
-with col9:
-    st.image("3165.jpg", caption="2844", use_container_width=True)
 
+# Second row (4 images)
+row2 = st.columns(4)
+with row2[0]:
+    st.image("2985.jpg", caption="2985", use_container_width=True)
+with row2[1]:
+    st.image("3014.jpg", caption="3014", use_container_width=True)
+with row2[2]:
+    st.image("3016.jpg", caption="3016", use_container_width=True)
+with row2[3]:
+    st.image("3037.jpg", caption="3037", use_container_width=True)
+
+# Optional: Center one image below
+st.columns([2, 1, 2])[1].image("3165.jpg", caption="3165", use_container_width=True)
+
+# Load and process data
 @st.cache_data
 def load_data():
     if os.path.getsize("tmdb_5000_credits.csv") == 0 or os.path.getsize("tmdb_5000_movies.csv") == 0:
@@ -87,13 +96,16 @@ def load_metadata():
     except:
         return pd.DataFrame(columns=['title', 'poster_path'])
 
+# Load datasets
 df = load_data()
 metadata = load_metadata()
 
+# TF-IDF & Similarity
 vectorizer = TfidfVectorizer(stop_words='english', max_features=5000)
 tfidf_matrix = vectorizer.fit_transform(df['tags'])
 cosine_sim = cosine_similarity(tfidf_matrix)
 
+# Recommendation engine
 def recommend_movies(query):
     query = query.lower()
     matches = df[
@@ -112,9 +124,11 @@ def recommend_movies(query):
 
     return df.iloc[movie_indices][['title', 'genres', 'cast', 'director']], "✅ Here are your movie recommendations:"
 
+# Sidebar search
 st.sidebar.title("🔍 Search")
 user_input = st.sidebar.text_input("Enter movie title, genre, actor or director")
 
+# Sidebar poster display
 st.sidebar.markdown("## 🎥 Random Movie Posters")
 if not metadata.empty:
     sample_posters = metadata.sample(3)
@@ -122,6 +136,7 @@ if not metadata.empty:
         poster_url = f"https://image.tmdb.org/t/p/w500{row['poster_path']}"
         st.sidebar.image(poster_url, caption=row['title'], use_container_width=True)
 
+# Show recommendations
 if user_input:
     recommendations, msg = recommend_movies(user_input)
     st.subheader(msg)
