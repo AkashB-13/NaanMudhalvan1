@@ -9,19 +9,16 @@ import os
 st.set_page_config(page_title="🎬 AI Movie Recommender", layout="wide")
 st.title("🎬 AI-Based Movie Recommendation System")
 
-# 🔽 Info above the image section
-st.markdown("### 🔎 Enter a movie, genre, actor, or director to get recommendations.")
-
-# 🎬 Display 4 small images in a row with gaps
+# 🔽 Display 4 small images in a row at the top
 col1, col2, col3, col4 = st.columns(4)
 with col1:
-    st.image("2461.jpg", caption="2461", use_column_width=True)
+    st.image("2461.jpg", caption="2461", use_container_width=True)
 with col2:
-    st.image("2544.jpg", caption="2544", use_column_width=True)
+    st.image("2544.jpg", caption="2544", use_container_width=True)
 with col3:
-    st.image("2795.jpg", caption="2795", use_column_width=True)
+    st.image("2795.jpg", caption="2795", use_container_width=True)
 with col4:
-    st.image("2844.jpg", caption="2844", use_column_width=True)
+    st.image("2844.jpg", caption="2844", use_container_width=True)
 
 @st.cache_data
 def load_data():
@@ -112,7 +109,7 @@ if not metadata.empty:
     sample_posters = metadata.sample(3)
     for _, row in sample_posters.iterrows():
         poster_url = f"https://image.tmdb.org/t/p/w500{row['poster_path']}"
-        st.sidebar.image(poster_url, caption=row['title'], use_column_width=True)
+        st.sidebar.image(poster_url, caption=row['title'], use_container_width=True)
 
 if user_input:
     recommendations, msg = recommend_movies(user_input)
@@ -123,7 +120,4 @@ if user_input:
         st.markdown(f"**Director:** {row['director']}")
         st.markdown(f"**Top Cast:** {', '.join(row['cast']) if isinstance(row['cast'], list) else row['cast']}")
         st.markdown("---")
-else:
-    st.info("🔎 Enter a movie, genre, actor, or director to get recommendations.")
-
 
