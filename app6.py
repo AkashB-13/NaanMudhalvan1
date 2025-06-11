@@ -17,13 +17,13 @@ st.markdown("### 🎞️ Featured Movie Posters")
 # First row (4 images)
 row1 = st.columns(4)
 with row1[0]:
-    st.image("2461.jpg", caption="2461", use_container_width=True)
+    st.image("2461.jpg", caption="FREDRICK WARDE", use_container_width=True)
 with row1[1]:
-    st.image("2544.jpg", caption="2544", use_container_width=True)
+    st.image("2544.jpg", caption="RICHARD LOPUS", use_container_width=True)
 with row1[2]:
-    st.image("2795.jpg", caption="2795", use_container_width=True)
+    st.image("2795.jpg", caption="GRIFFTH", use_container_width=True)
 with row1[3]:
-    st.image("2844.jpg", caption="2844", use_container_width=True)
+    st.image("2844.jpg", caption="FANTOMAS", use_container_width=True)
 
 # Second row (4 images)
 row2 = st.columns(4)
