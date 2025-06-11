@@ -1,71 +1,119 @@
-
 import streamlit as st
 import pandas as pd
+import numpy as np
+import ast
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
+import os
 
-# App config
-st.set_page_config(page_title="🎬 Movie Genre Explorer", layout="wide")
+# Page configuration
+st.set_page_config(page_title="🎬 AI Movie Recommender", layout="wide")
+st.markdown("<h1 style='text-align: center; color: #FF4B4B;'>🍿 AI-Based Movie Recommendation System 🎥</h1>", unsafe_allow_html=True)
 
-# Custom background and style
-st.markdown("""
-    <style>
-        body {
-            background-color: #111;
-            color: white;
-        }
-        .movie-card {
-            background-color: #222;
-            padding: 1rem;
-            border-radius: 15px;
-            margin: 1rem 0;
-            box-shadow: 0 4px 10px rgba(255, 255, 255, 0.1);
-        }
-        .title {
-            font-size: 24px;
-            color: #FFD700;
-        }
-        .genre {
-            font-size: 18px;
-            color: #ADFF2F;
-        }
-        .poster {
-            max-height: 300px;
-            border-radius: 10px;
-        }
-    </style>
-""", unsafe_allow_html=True)
+@st.cache_data
+def load_data():
+    # Check if files exist
+    if not os.path.exists("tmdb_5000_movies.csv") or not os.path.exists("tmdb_5000_credits.csv"):
+        st.error("❌ Movie and credits data not found.")
+        st.stop()
 
-# Header
-st.markdown("<h1 style='text-align: center;'>🍿 Movie Genre Visual Explorer 🎞️</h1>", unsafe_allow_html=True)
+    movies = pd.read_csv("tmdb_5000_movies.csv")
+    credits = pd.read_csv("tmdb_5000_credits.csv")
+    df = movies.merge(credits, on='title')
 
-# Upload the MovieGenre dataset
-file = st.file_uploader("📤 Upload MovieGenre.csv", type=["csv"])
+    df['cast'] = df['cast'].fillna('[]')
+    df['crew'] = df['crew'].fillna('[]')
+    df['genres'] = df['genres'].fillna('[]')
 
-if file:
+    def get_director(crew_json):
+        try:
+            for member in ast.literal_eval(crew_json):
+                if member.get('job') == 'Director':
+                    return member.get('name', '')
+        except:
+            return ''
+        return ''
+
+    def get_top_cast(cast_json):
+        try:
+            return [member.get('name', '') for member in ast.literal_eval(cast_json)[:3]]
+        except:
+            return []
+
+    def get_genres(genre_json):
+        try:
+            return ' '.join([genre['name'].lower().replace(" ", "") for genre in ast.literal_eval(genre_json)])
+        except:
+            return ''
+
+    df['director'] = df['crew'].apply(get_director)
+    df['cast'] = df['cast'].apply(get_top_cast)
+    df['genres'] = df['genres'].apply(get_genres)
+
+    df['tags'] = df.apply(lambda row: f"{' '.join(row['cast'])} {row['director']} {row['genres']}", axis=1)
+    return df[['title', 'genres', 'cast', 'director', 'tags']]
+
+@st.cache_data
+def load_posters():
     try:
-        df = pd.read_csv(file)
-        df = df.dropna(subset=['Title', 'Genre'])
+        posters_df = pd.read_csv("movies_metadata.csv")
+        posters_df = posters_df[['Title', 'Poster']].dropna()
+        return posters_df
+    except:
+        return pd.DataFrame(columns=['Title', 'Poster'])
 
-        st.markdown("## 🔍 Browse Movies by Genre")
+df = load_data()
+posters = load_posters()
 
-        # Option to filter by genre
-        all_genres = sorted(set(g.strip() for sublist in df['Genre'].dropna().str.split('|') for g in sublist))
-        selected_genre = st.selectbox("🎯 Select Genre to Filter", options=['All'] + all_genres)
+# TF-IDF
+vectorizer = TfidfVectorizer(stop_words='english', max_features=5000)
+tfidf_matrix = vectorizer.fit_transform(df['tags'])
+cosine_sim = cosine_similarity(tfidf_matrix)
 
-        if selected_genre != "All":
-            df = df[df['Genre'].str.contains(selected_genre, case=False, na=False)]
+def recommend_movies(query):
+    query = query.lower()
+    matches = df[
+        df['title'].str.lower().str.contains(query) |
+        df['genres'].str.lower().str.contains(query) |
+        df['director'].str.lower().str.contains(query) |
+        df['cast'].apply(lambda x: any(query in member.lower() for member in x) if isinstance(x, list) else False)
+    ]
 
-        # Show movie cards
-        for _, row in df.head(15).iterrows():
-            st.markdown("<div class='movie-card'>", unsafe_allow_html=True)
-            st.markdown(f"<div class='title'>🎬 {row['Title']}</div>", unsafe_allow_html=True)
-            st.markdown(f"<div class='genre'>📽️ {row['Genre']}</div>", unsafe_allow_html=True)
-            if 'Poster' in row and pd.notna(row['Poster']):
-                st.image(row['Poster'], width=200)
-            st.markdown("</div>", unsafe_allow_html=True)
+    if matches.empty:
+        return pd.DataFrame(), "❌ No matches found."
 
-        st.success("✅ Displayed successfully!")
+    idx = matches.index[0]
+    scores = sorted(list(enumerate(cosine_sim[idx])), key=lambda x: x[1], reverse=True)[1:11]
+    movie_indices = [i[0] for i in scores]
+    return df.iloc[movie_indices][['title', 'genres', 'cast', 'director']], "✅ Recommendations for you:"
 
-    except Exception as e:
-        st.error(f"Error loading file: {e}")
+# Sidebar input
+st.sidebar.title("🔍 Search Movies")
+user_input = st.sidebar.text_input("Enter title, genre, actor, or director")
+
+# Main display: Show random movie posters
+if not posters.empty:
+    st.markdown("### 🎞️ Featured Movies")
+    sample_posters = posters.sample(3)
+    cols = st.columns(3)
+    for idx, (_, row) in enumerate(sample_posters.iterrows()):
+        with cols[idx]:
+            st.image(row['Poster'], caption=row['Title'], use_column_width=True)
+
+# Search and results
+if user_input:
+    recommendations, msg = recommend_movies(user_input)
+    st.subheader(msg)
+    for _, row in recommendations.iterrows():
+        st.markdown(f"### 🎬 {row['title']}")
+        st.markdown(f"**🎭 Genres:** {row['genres']}")
+        st.markdown(f"**🎬 Director:** {row['director']}")
+        st.markdown(f"**⭐ Top Cast:** {', '.join(row['cast']) if isinstance(row['cast'], list) else row['cast']}")
+        # Show poster if available
+        matched = posters[posters['Title'].str.lower() == row['title'].lower()]
+        if not matched.empty:
+            st.image(matched.iloc[0]['Poster'], use_column_width=False, width=300)
+        st.markdown("---")
 else:
-    st.info("⬆️ Please upload the `MovieGenre.csv` file to begin.")
+    st.info("🔎 Type a movie, genre, actor, or director to get started.")
+
