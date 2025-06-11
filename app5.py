@@ -4,48 +4,68 @@ import numpy as np
 import ast
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
+from wordcloud import WordCloud
+import matplotlib.pyplot as plt
 
-st.set_page_config(page_title="🎬 AI Movie Recommender", layout="wide")
-st.title("🎬 AI-Based Movie Recommendation System")
+# Page configuration
+st.set_page_config(
+    page_title="🎬 Smart Movie Recommender",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+# Background styling
+page_bg_img = '''
+<style>
+[data-testid="stAppViewContainer"] > .main {
+    background-image: url("https://images.unsplash.com/photo-1600172454520-134b2dcdb3ea");
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    background-attachment: fixed;
+    color: white;
+}
+[data-testid="stSidebar"] {
+    background-color: #1f1f2e;
+}
+</style>
+'''
+st.markdown(page_bg_img, unsafe_allow_html=True)
+
+st.markdown("""
+    <h1 style='text-align: center; color: #f9c74f;'>🍿 AI-Powered Movie Recommendation Engine</h1>
+    <p style='text-align: center; color: #f1faee;'>Find your next favorite movie by searching by genre, cast, or director!</p>
+""", unsafe_allow_html=True)
 
 @st.cache_data
 def load_data():
-    # Load datasets
     movies = pd.read_csv("tmdb_5000_movies.csv")
     credits = pd.read_csv("tmdb_5000_credits.csv")
-
-    # Merge on 'title'
     df = movies.merge(credits, on='title')
 
-    # Fill nulls to avoid issues
+    # Clean data
     df['cast'] = df['cast'].fillna('[]')
     df['crew'] = df['crew'].fillna('[]')
     df['genres'] = df['genres'].fillna('[]')
 
-    # Extract director
     def get_director(crew_json):
         try:
-            crew_list = ast.literal_eval(crew_json)
-            for member in crew_list:
+            for member in ast.literal_eval(crew_json):
                 if member.get('job') == 'Director':
                     return member.get('name', '')
         except:
             return ''
         return ''
 
-    # Extract top 3 cast
     def get_top_cast(cast_json):
         try:
-            cast_list = ast.literal_eval(cast_json)
-            return [member.get('name', '') for member in cast_list[:3]]
+            return [member.get('name', '') for member in ast.literal_eval(cast_json)[:3]]
         except:
             return []
 
-    # Extract genres
     def get_genres(genre_json):
         try:
-            genre_list = ast.literal_eval(genre_json)
-            return ' '.join([genre['name'].lower().replace(" ", "") for genre in genre_list])
+            return ' '.join([genre['name'].lower().replace(" ", "") for genre in ast.literal_eval(genre_json)])
         except:
             return ''
 
@@ -53,19 +73,16 @@ def load_data():
     df['cast'] = df['cast'].apply(get_top_cast)
     df['genres'] = df['genres'].apply(get_genres)
 
-    # Create a single text feature for each movie
     def create_tags(row):
-        cast = ' '.join(row['cast']) if isinstance(row['cast'], list) else ''
-        return f"{cast} {row['director']} {row['genres']}"
+        return f"{' '.join(row['cast'])} {row['director']} {row['genres']}"
 
     df['tags'] = df.apply(create_tags, axis=1)
-
     return df[['title', 'genres', 'cast', 'director', 'tags']]
 
-# Load and preprocess data
+# Load and process data
 df = load_data()
 
-# TF-IDF vectorization
+# TF-IDF + Cosine similarity
 vectorizer = TfidfVectorizer(stop_words='english', max_features=5000)
 tfidf_matrix = vectorizer.fit_transform(df['tags'])
 cosine_sim = cosine_similarity(tfidf_matrix)
@@ -91,19 +108,30 @@ def recommend_movies(query):
     return df.iloc[movie_indices][['title', 'genres', 'cast', 'director']], "Here are some recommended movies for you:"
 
 # Sidebar input
-st.sidebar.title("🔍 Movie Finder")
-user_input = st.sidebar.text_input("Enter genre, movie name, director, or actor")
+st.sidebar.title("🎯 Search Criteria")
+user_input = st.sidebar.text_input("Enter movie name, genre, actor, or director")
 
-# Display recommendations
+# Display results
 if user_input:
     recommendations, msg = recommend_movies(user_input)
     st.subheader(msg)
+    
     for _, row in recommendations.iterrows():
-        st.markdown(f"### 🎬 {row['title']}")
-        st.markdown(f"**Genres:** {row['genres']}")
-        st.markdown(f"**Director:** {row['director']}")
-        st.markdown(f"**Top Cast:** {', '.join(row['cast']) if isinstance(row['cast'], list) else row['cast']}")
-        st.markdown("---")
-else:
-    st.info("Please enter a movie, genre, director, or actor in the sidebar to get recommendations.")
+        st.markdown(f"""
+            <div style='background-color:rgba(0,0,0,0.6);padding:1rem;margin-bottom:1rem;border-radius:10px;'>
+                <h3 style='color:#f94144;'>🎬 {row['title']}</h3>
+                <p><strong>Genres:</strong> {row['genres']}</p>
+                <p><strong>Director:</strong> {row['director']}</p>
+                <p><strong>Top Cast:</strong> {', '.join(row['cast'])}</p>
+            </div>
+        """, unsafe_allow_html=True)
 
+    # WordCloud of Tags
+    st.subheader("🔍 Visual Insight: Tag WordCloud")
+    wordcloud = WordCloud(width=800, height=400, background_color='black').generate(" ".join(df['tags']))
+    fig, ax = plt.subplots(figsize=(15, 7))
+    ax.imshow(wordcloud, interpolation='bilinear')
+    ax.axis('off')
+    st.pyplot(fig)
+else:
+    st.info("Please enter something in the sidebar to get movie suggestions.")
