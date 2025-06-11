@@ -4,11 +4,13 @@ import numpy as np
 import ast
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
-import random
 import os
 
 st.set_page_config(page_title="🎬 AI Movie Recommender", layout="wide")
 st.title("🎬 AI-Based Movie Recommendation System")
+
+# 🔥 Display specific image in the main UI (above everything else)
+st.image("2461.jpg", caption="Featured Movie: 2461", use_column_width=True)
 
 @st.cache_data
 def load_data():
@@ -62,13 +64,12 @@ def load_data():
 @st.cache_data
 def load_metadata():
     try:
-        metadata = pd.read_csv("/mnt/data/8be23759-6eba-4327-805e-39a6b8951bfd.csv", low_memory=False)
-        metadata = metadata[metadata['poster_path'].notna()]
-        metadata = metadata[['title', 'poster_path']]
-        metadata['title_lower'] = metadata['title'].str.lower()
-        return metadata
+        meta = pd.read_csv("movies_metadata.csv", low_memory=False)
+        meta = meta[meta['poster_path'].notna()]
+        meta = meta[['title', 'poster_path']]
+        return meta
     except:
-        return pd.DataFrame(columns=['title', 'poster_path', 'title_lower'])
+        return pd.DataFrame(columns=['title', 'poster_path'])
 
 # Load data
 df = load_data()
@@ -79,7 +80,6 @@ vectorizer = TfidfVectorizer(stop_words='english', max_features=5000)
 tfidf_matrix = vectorizer.fit_transform(df['tags'])
 cosine_sim = cosine_similarity(tfidf_matrix)
 
-# Recommendation engine
 def recommend_movies(query):
     query = query.lower()
     matches = df[
@@ -96,15 +96,11 @@ def recommend_movies(query):
     scores = sorted(list(enumerate(cosine_sim[idx])), key=lambda x: x[1], reverse=True)[1:11]
     movie_indices = [i[0] for i in scores]
 
-    recommended = df.iloc[movie_indices][['title', 'genres', 'cast', 'director']]
-    recommended['title_lower'] = recommended['title'].str.lower()
-    return recommended, "✅ Here are your movie recommendations:"
+    return df.iloc[movie_indices][['title', 'genres', 'cast', 'director']], "✅ Here are your movie recommendations:"
 
-# Sidebar input
 st.sidebar.title("🔍 Search")
 user_input = st.sidebar.text_input("Enter movie title, genre, actor or director")
 
-# Background section - random posters
 st.sidebar.markdown("## 🎥 Random Movie Posters")
 if not metadata.empty:
     sample_posters = metadata.sample(3)
@@ -112,28 +108,15 @@ if not metadata.empty:
         poster_url = f"https://image.tmdb.org/t/p/w500{row['poster_path']}"
         st.sidebar.image(poster_url, caption=row['title'], use_column_width=True)
 
-# Results
 if user_input:
     recommendations, msg = recommend_movies(user_input)
     st.subheader(msg)
-    if recommendations.empty:
-        st.warning("Try a different search.")
-    else:
-        for _, row in recommendations.iterrows():
-            col1, col2 = st.columns([1, 4])
-            with col1:
-                poster_row = metadata[metadata['title_lower'] == row['title_lower']]
-                if not poster_row.empty:
-                    poster_url = f"https://image.tmdb.org/t/p/w500{poster_row.iloc[0]['poster_path']}"
-                    st.image(poster_url, width=120)
-                else:
-                    st.image("https://via.placeholder.com/120x180?text=No+Image", width=120)
-            with col2:
-                st.markdown(f"### 🎬 {row['title']}")
-                st.markdown(f"**Genres:** {row['genres']}")
-                st.markdown(f"**Director:** {row['director']}")
-                st.markdown(f"**Top Cast:** {', '.join(row['cast']) if isinstance(row['cast'], list) else row['cast']}")
-                st.markdown("---")
+    for _, row in recommendations.iterrows():
+        st.markdown(f"### 🎬 {row['title']}")
+        st.markdown(f"**Genres:** {row['genres']}")
+        st.markdown(f"**Director:** {row['director']}")
+        st.markdown(f"**Top Cast:** {', '.join(row['cast']) if isinstance(row['cast'], list) else row['cast']}")
+        st.markdown("---")
 else:
     st.info("🔎 Enter a movie, genre, actor, or director to get recommendations.")
 
