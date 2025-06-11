@@ -36,7 +36,7 @@ with row2[3]:
     st.image("3037.jpg", caption="FANTAMOS", use_container_width=True)
 
 
-st.columns([2, 1, 2])[1].image("FANTAMOS 2.jpg", caption="3165", use_container_width=True)
+st.columns([2, 1, 2])[1].image("3439.jpg", caption="3165", use_container_width=True)
 
 
 @st.cache_data
