@@ -8,6 +8,7 @@ import os
 
 st.set_page_config(page_title="🎬 AI Movie Recommender", layout="wide")
 st.title("🎬 AI-Based Movie Recommendation System")
+st.title("🎬 Cine Match")
 
 # 🔽 Display 4 small images in a row at the top
 col1, col2, col3, col4 = st.columns(4)
@@ -18,6 +19,16 @@ with col2:
 with col3:
     st.image("2795.jpg", caption="2795", use_container_width=True)
 with col4:
+    st.image("2844.jpg", caption="2844", use_container_width=True)
+with col5:
+    st.image("2844.jpg", caption="2844", use_container_width=True)
+with col6:
+    st.image("2844.jpg", caption="2844", use_container_width=True)
+with col7:
+    st.image("2844.jpg", caption="2844", use_container_width=True)
+with col8:
+    st.image("2844.jpg", caption="2844", use_container_width=True)
+with col9:
     st.image("2844.jpg", caption="2844", use_container_width=True)
 
 @st.cache_data
