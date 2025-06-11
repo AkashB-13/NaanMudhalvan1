@@ -28,16 +28,16 @@ with row1[3]:
 # Second row (4 images)
 row2 = st.columns(4)
 with row2[0]:
-    st.image("2985.jpg", caption="2985", use_container_width=True)
+    st.image("2985.jpg", caption="THE FAIRY KING", use_container_width=True)
 with row2[1]:
-    st.image("3014.jpg", caption="3014", use_container_width=True)
+    st.image("3014.jpg", caption="A MAN THERE WAS", use_container_width=True)
 with row2[2]:
-    st.image("3016.jpg", caption="3016", use_container_width=True)
+    st.image("3016.jpg", caption="THE INSIDE OF THE WHITE SLAVE", use_container_width=True)
 with row2[3]:
-    st.image("3037.jpg", caption="3037", use_container_width=True)
+    st.image("3037.jpg", caption="FANTAMOS", use_container_width=True)
 
 # Optional: Center one image below
-st.columns([2, 1, 2])[1].image("3165.jpg", caption="3165", use_container_width=True)
+st.columns([2, 1, 2])[1].image("FANTAMOS 2.jpg", caption="3165", use_container_width=True)
 
 # Load and process data
 @st.cache_data
