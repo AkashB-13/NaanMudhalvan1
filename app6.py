@@ -38,7 +38,7 @@ with row2[3]:
 
 row3=st.columns(4)
 with row2[0]:
-    st.image("3165.jpg", caption="THE FAIRY KING", use_container_width=True)
+    st.image("3419.jpg", caption="", use_container_width=True)
 
 @st.cache_data
 def load_data():
