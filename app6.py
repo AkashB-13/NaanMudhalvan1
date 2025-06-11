@@ -6,15 +6,14 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 import os
 
-# Streamlit Page Setup
+
 st.set_page_config(page_title="🎬 AI Movie Recommender", layout="wide")
 st.title("🎬 Cine Match")
 st.markdown("### 🎯 Enter movie title, genre, actor or director in the search bar")
 
-# 🔽 Display 8 images in a 4x2 grid + 1 centered below
 st.markdown("### 🎞️ Featured Movie Posters")
 
-# First row (4 images)
+
 row1 = st.columns(4)
 with row1[0]:
     st.image("2461.jpg", caption="FREDRICK WARDE", use_container_width=True)
@@ -25,7 +24,7 @@ with row1[2]:
 with row1[3]:
     st.image("2844.jpg", caption="FANTOMAS", use_container_width=True)
 
-# Second row (4 images)
+
 row2 = st.columns(4)
 with row2[0]:
     st.image("2985.jpg", caption="THE FAIRY KING", use_container_width=True)
@@ -36,10 +35,10 @@ with row2[2]:
 with row2[3]:
     st.image("3037.jpg", caption="FANTAMOS", use_container_width=True)
 
-# Optional: Center one image below
+
 st.columns([2, 1, 2])[1].image("FANTAMOS 2.jpg", caption="3165", use_container_width=True)
 
-# Load and process data
+
 @st.cache_data
 def load_data():
     if os.path.getsize("tmdb_5000_credits.csv") == 0 or os.path.getsize("tmdb_5000_movies.csv") == 0:
