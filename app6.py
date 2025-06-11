@@ -39,9 +39,12 @@ with row2[3]:
 row3=st.columns(4)
 with row2[0]:
     st.image("3419.jpg", caption="THE STUDENT OF PRAGUE", use_container_width=True)
-    st.image("3471.jpg", caption="THE STUDENT OF PRAGUE", use_container_width=True)
-    st.image("3489.jpg", caption="THE STUDENT OF PRAGUE", use_container_width=True)
-    st.image("3643.jpg", caption="THE STUDENT OF PRAGUE", use_container_width=True)
+with row2[1]:
+    st.image("3471.jpg", caption="TRAFFIC IN SOULS", use_container_width=True)
+with row2[2]:
+    st.image("3489.jpg", caption="THE LAST DAY OF POMPII", use_container_width=True)
+with row2[3]:
+    st.image("3643.jpg", caption="THE AVENGING CONSCIENCE", use_container_width=True)
 
 @st.cache_data
 def load_data():
