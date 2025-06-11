@@ -8,6 +8,26 @@ from sklearn.metrics.pairwise import cosine_similarity
 st.set_page_config(page_title="🎬 AI Movie Recommender", layout="wide")
 st.title("🎬 AI-Based Movie Recommendation System")
 
+# Show random posters from metadata.csv
+def display_random_movie_posters():
+    try:
+        meta = pd.read_csv("movies_metadata.csv", low_memory=False)
+        meta = meta[meta['poster_path'].notna()]
+        meta = meta[meta['title'].notna()]
+        meta = meta[meta['poster_path'].astype(str).str.startswith('/')]
+        sample_movies = meta.sample(n=4, random_state=42)
+
+        st.markdown("### 🎥 Featured Movies")
+        cols = st.columns(4)
+        for idx, (_, row) in enumerate(sample_movies.iterrows()):
+            with cols[idx]:
+                st.image(f"https://image.tmdb.org/t/p/w500{row['poster_path']}", caption=row['title'], use_column_width=True)
+    except Exception as e:
+        st.warning(f"Couldn't load featured movie posters: {e}")
+
+# Display the featured movie posters
+display_random_movie_posters()
+
 @st.cache_data
 def load_data():
     # Load datasets
@@ -21,6 +41,7 @@ def load_data():
     df['cast'] = df['cast'].fillna('[]')
     df['crew'] = df['crew'].fillna('[]')
     df['genres'] = df['genres'].fillna('[]')
+    df['overview'] = df['overview'].fillna('')
 
     # Extract director
     def get_director(crew_json):
@@ -53,14 +74,14 @@ def load_data():
     df['cast'] = df['cast'].apply(get_top_cast)
     df['genres'] = df['genres'].apply(get_genres)
 
-    # Create a single text feature for each movie
+    # Create tags for content-based filtering
     def create_tags(row):
         cast = ' '.join(row['cast']) if isinstance(row['cast'], list) else ''
-        return f"{cast} {row['director']} {row['genres']}"
+        return f"{cast} {row['director']} {row['genres']} {row['overview']}"
 
     df['tags'] = df.apply(create_tags, axis=1)
 
-    return df[['title', 'genres', 'cast', 'director', 'tags']]
+    return df[['title', 'genres', 'cast', 'director', 'tags', 'overview']]
 
 # Load and preprocess data
 df = load_data()
@@ -81,14 +102,14 @@ def recommend_movies(query):
     ]
 
     if matches.empty:
-        return pd.DataFrame(), "No matches found for your input."
+        return pd.DataFrame(), "❌ No matches found for your input."
 
     idx = matches.index[0]
     scores = list(enumerate(cosine_sim[idx]))
     scores = sorted(scores, key=lambda x: x[1], reverse=True)[1:11]
     movie_indices = [i[0] for i in scores]
 
-    return df.iloc[movie_indices][['title', 'genres', 'cast', 'director']], "Here are some recommended movies for you:"
+    return df.iloc[movie_indices][['title', 'genres', 'cast', 'director', 'overview']], "✅ Here are some recommended movies for you:"
 
 # Sidebar input
 st.sidebar.title("🔍 Movie Finder")
@@ -103,6 +124,7 @@ if user_input:
         st.markdown(f"**Genres:** {row['genres']}")
         st.markdown(f"**Director:** {row['director']}")
         st.markdown(f"**Top Cast:** {', '.join(row['cast']) if isinstance(row['cast'], list) else row['cast']}")
+        st.markdown(f"**Overview:** {row['overview'][:300]}{'...' if len(row['overview']) > 300 else ''}")
         st.markdown("---")
 else:
     st.info("Please enter a movie, genre, director, or actor in the sidebar to get recommendations.")
