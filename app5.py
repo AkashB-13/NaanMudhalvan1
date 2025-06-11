@@ -2,106 +2,107 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import ast
-import requests
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
-# Streamlit config
-st.set_page_config(page_title="MovieVerse AI Recommender", layout="wide")
+st.set_page_config(page_title="🎬 AI Movie Recommender", layout="wide")
 st.title("🎬 AI-Based Movie Recommendation System")
 
-# Load data
 @st.cache_data
-
 def load_data():
-    movies = pd.read_csv("movie.csv")
-    links = pd.read_csv("link.csv")
+    # Load datasets
+    movies = pd.read_csv("tmdb_5000_movies.csv")
+    credits = pd.read_csv("tmdb_5000_credits.csv")
 
-    # Merge on movieId
-    df = pd.merge(movies, links, on="movieId", how="inner")
-    df.dropna(subset=['tmdbId'], inplace=True)
-    df['tmdbId'] = df['tmdbId'].astype(int)
-    
-    # Process genres
-    df['genres'] = df['genres'].apply(lambda x: x.replace('|', ' '))
-    df['tags'] = df['title'] + ' ' + df['genres']
+    # Merge on 'title'
+    df = movies.merge(credits, on='title')
 
-    # Vectorize tags
-    vectorizer = TfidfVectorizer(stop_words='english')
-    tfidf_matrix = vectorizer.fit_transform(df['tags'])
-    similarity = cosine_similarity(tfidf_matrix)
+    # Fill nulls to avoid issues
+    df['cast'] = df['cast'].fillna('[]')
+    df['crew'] = df['crew'].fillna('[]')
+    df['genres'] = df['genres'].fillna('[]')
 
-    return df, vectorizer, similarity
+    # Extract director
+    def get_director(crew_json):
+        try:
+            crew_list = ast.literal_eval(crew_json)
+            for member in crew_list:
+                if member.get('job') == 'Director':
+                    return member.get('name', '')
+        except:
+            return ''
+        return ''
 
-# Fetch posters from TMDB API
-def fetch_poster(tmdb_id):
-    api_key = "fd09c6f07ac096efb6bf5af91fa69803"
-    url = f"https://api.themoviedb.org/3/movie/{tmdb_id}?api_key={api_key}"
-    try:
-        response = requests.get(url)
-        data = response.json()
-        if data.get("poster_path"):
-            return f"https://image.tmdb.org/t/p/w500{data['poster_path']}"
-    except:
-        pass
-    return "https://via.placeholder.com/300x450?text=No+Image"
+    # Extract top 3 cast
+    def get_top_cast(cast_json):
+        try:
+            cast_list = ast.literal_eval(cast_json)
+            return [member.get('name', '') for member in cast_list[:3]]
+        except:
+            return []
 
-df, vectorizer, similarity = load_data()
+    # Extract genres
+    def get_genres(genre_json):
+        try:
+            genre_list = ast.literal_eval(genre_json)
+            return ' '.join([genre['name'].lower().replace(" ", "") for genre in genre_list])
+        except:
+            return ''
 
-# Sidebar filters
-st.sidebar.header("🔍 Search Preferences")
-user_title = st.sidebar.text_input("Enter Movie Title (optional)")
-user_genre = st.sidebar.text_input("Enter Genre (optional)")
-user_director = st.sidebar.text_input("Enter Director (optional)")
+    df['director'] = df['crew'].apply(get_director)
+    df['cast'] = df['cast'].apply(get_top_cast)
+    df['genres'] = df['genres'].apply(get_genres)
 
-# Recommend movies
-@st.cache_data
+    # Create a single text feature for each movie
+    def create_tags(row):
+        cast = ' '.join(row['cast']) if isinstance(row['cast'], list) else ''
+        return f"{cast} {row['director']} {row['genres']}"
 
-def recommend(title=None, genre=None):
-    indices = []
+    df['tags'] = df.apply(create_tags, axis=1)
 
-    if title:
-        matches = df[df['title'].str.contains(title, case=False, na=False)]
-        if not matches.empty:
-            idx = matches.index[0]
-            sim_scores = list(enumerate(similarity[idx]))
-            sim_scores = sorted(sim_scores, key=lambda x: x[1], reverse=True)[1:21]
-            indices = [i[0] for i in sim_scores]
+    return df[['title', 'genres', 'cast', 'director', 'tags']]
 
-    elif genre:
-        indices = df[df['genres'].str.contains(genre, case=False, na=False)].index.tolist()
+# Load and preprocess data
+df = load_data()
 
-    else:
-        indices = df.sample(20).index.tolist()
+# TF-IDF vectorization
+vectorizer = TfidfVectorizer(stop_words='english', max_features=5000)
+tfidf_matrix = vectorizer.fit_transform(df['tags'])
+cosine_sim = cosine_similarity(tfidf_matrix)
 
-    results = df.iloc[indices].copy()
-    results['poster'] = results['tmdbId'].apply(fetch_poster)
-    return results
+# Recommendation function
+def recommend_movies(query):
+    query = query.lower()
+    matches = df[
+        df['title'].str.lower().str.contains(query) |
+        df['genres'].str.lower().str.contains(query) |
+        df['director'].str.lower().str.contains(query) |
+        df['cast'].apply(lambda x: any(query in member.lower() for member in x) if isinstance(x, list) else False)
+    ]
 
-# Show Recommendations
-st.markdown("""<style>.block-container{padding-top:2rem;}</style>""", unsafe_allow_html=True)
+    if matches.empty:
+        return pd.DataFrame(), "No matches found for your input."
 
-if user_title or user_genre or user_director:
-    st.subheader("✨ Your Personalized Recommendations")
-    results = recommend(user_title, user_genre)
-    cols = st.columns(4)
-    for i, row in results.iterrows():
-        with cols[i % 4]:
-            st.image(row['poster'], use_column_width=True)
-            st.markdown(f"**{row['title']}**")
-            st.caption(row['genres'])
+    idx = matches.index[0]
+    scores = list(enumerate(cosine_sim[idx]))
+    scores = sorted(scores, key=lambda x: x[1], reverse=True)[1:11]
+    movie_indices = [i[0] for i in scores]
+
+    return df.iloc[movie_indices][['title', 'genres', 'cast', 'director']], "Here are some recommended movies for you:"
+
+# Sidebar input
+st.sidebar.title("🔍 Movie Finder")
+user_input = st.sidebar.text_input("Enter genre, movie name, director, or actor")
+
+# Display recommendations
+if user_input:
+    recommendations, msg = recommend_movies(user_input)
+    st.subheader(msg)
+    for _, row in recommendations.iterrows():
+        st.markdown(f"### 🎬 {row['title']}")
+        st.markdown(f"**Genres:** {row['genres']}")
+        st.markdown(f"**Director:** {row['director']}")
+        st.markdown(f"**Top Cast:** {', '.join(row['cast']) if isinstance(row['cast'], list) else row['cast']}")
+        st.markdown("---")
 else:
-    st.info("Enter a movie name, genre, or director in the sidebar to get started!")
-
-# Add background image using markdown CSS
-st.markdown(
-    """
-    <style>
-    body {
-        background-image: url("https://images.unsplash.com/photo-1542206395-9feb3edaa68c?auto=format&fit=crop&w=1650&q=80");
-        background-size: cover;
-    }
-    </style>
-    """,
-    unsafe_allow_html=True
-)
+    st.info("Please enter a movie, genre, director, or actor in the sidebar to get recommendations.")
