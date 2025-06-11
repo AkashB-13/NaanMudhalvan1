@@ -2,106 +2,116 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import ast
-import requests
+import os
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
+from wordcloud import WordCloud
+import matplotlib.pyplot as plt
 
-# Streamlit config
-st.set_page_config(page_title="MovieVerse AI Recommender", layout="wide")
-st.title("🎬 AI-Based Movie Recommendation System")
+st.set_page_config(page_title="🎬 Enhanced Movie Recommender", layout="wide")
 
-# Load data
-@st.cache_data
-
-def load_data():
-    movies = pd.read_csv("movie.csv")
-    links = pd.read_csv("link.csv")
-
-    # Merge on movieId
-    df = pd.merge(movies, links, on="movieId", how="inner")
-    df.dropna(subset=['tmdbId'], inplace=True)
-    df['tmdbId'] = df['tmdbId'].astype(int)
-    
-    # Process genres
-    df['genres'] = df['genres'].apply(lambda x: x.replace('|', ' '))
-    df['tags'] = df['title'] + ' ' + df['genres']
-
-    # Vectorize tags
-    vectorizer = TfidfVectorizer(stop_words='english')
-    tfidf_matrix = vectorizer.fit_transform(df['tags'])
-    similarity = cosine_similarity(tfidf_matrix)
-
-    return df, vectorizer, similarity
-
-# Fetch posters from TMDB API
-def fetch_poster(tmdb_id):
-    api_key = "fd09c6f07ac096efb6bf5af91fa69803"
-    url = f"https://api.themoviedb.org/3/movie/{tmdb_id}?api_key={api_key}"
-    try:
-        response = requests.get(url)
-        data = response.json()
-        if data.get("poster_path"):
-            return f"https://image.tmdb.org/t/p/w500{data['poster_path']}"
-    except:
-        pass
-    return "https://via.placeholder.com/300x450?text=No+Image"
-
-df, vectorizer, similarity = load_data()
-
-# Sidebar filters
-st.sidebar.header("🔍 Search Preferences")
-user_title = st.sidebar.text_input("Enter Movie Title (optional)")
-user_genre = st.sidebar.text_input("Enter Genre (optional)")
-user_director = st.sidebar.text_input("Enter Director (optional)")
-
-# Recommend movies
-@st.cache_data
-
-def recommend(title=None, genre=None):
-    indices = []
-
-    if title:
-        matches = df[df['title'].str.contains(title, case=False, na=False)]
-        if not matches.empty:
-            idx = matches.index[0]
-            sim_scores = list(enumerate(similarity[idx]))
-            sim_scores = sorted(sim_scores, key=lambda x: x[1], reverse=True)[1:21]
-            indices = [i[0] for i in sim_scores]
-
-    elif genre:
-        indices = df[df['genres'].str.contains(genre, case=False, na=False)].index.tolist()
-
-    else:
-        indices = df.sample(20).index.tolist()
-
-    results = df.iloc[indices].copy()
-    results['poster'] = results['tmdbId'].apply(fetch_poster)
-    return results
-
-# Show Recommendations
-st.markdown("""<style>.block-container{padding-top:2rem;}</style>""", unsafe_allow_html=True)
-
-if user_title or user_genre or user_director:
-    st.subheader("✨ Your Personalized Recommendations")
-    results = recommend(user_title, user_genre)
-    cols = st.columns(4)
-    for i, row in results.iterrows():
-        with cols[i % 4]:
-            st.image(row['poster'], use_column_width=True)
-            st.markdown(f"**{row['title']}**")
-            st.caption(row['genres'])
-else:
-    st.info("Enter a movie name, genre, or director in the sidebar to get started!")
-
-# Add background image using markdown CSS
+# Add background
 st.markdown(
-    """
+    f"""
     <style>
-    body {
-        background-image: url("https://images.unsplash.com/photo-1542206395-9feb3edaa68c?auto=format&fit=crop&w=1650&q=80");
+    .stApp {{
+        background-image: url("https://images.unsplash.com/photo-1524985069026-dd778a71c7b4");
         background-size: cover;
-    }
+        color: white;
+    }}
+    .css-1d391kg {{
+        background-color: rgba(0, 0, 0, 0.5) !important;
+    }}
     </style>
     """,
     unsafe_allow_html=True
 )
+
+st.title("🎬 Enhanced AI Movie Recommender")
+
+@st.cache_data
+def load_data():
+    movie = pd.read_csv("movie.csv")
+    link = pd.read_csv("link.csv")
+    credits = pd.read_csv("tmdb_5000_credits.csv")
+    
+    link = link.dropna(subset=['tmdbId'])
+    link['tmdbId'] = link['tmdbId'].astype(int)
+    credits['movie_id'] = credits['movie_id'].astype(int)
+    movie_linked = movie.merge(link, on='movieId')
+    df = movie_linked.merge(credits, left_on='tmdbId', right_on='movie_id', how='left')
+
+    df['cast'] = df['cast'].fillna('[]')
+    df['crew'] = df['crew'].fillna('[]')
+    df['genres'] = df['genres'].fillna('')
+
+    def get_director(x):
+        for i in ast.literal_eval(x):
+            if i.get('job') == 'Director':
+                return i.get('name')
+        return ''
+    def get_top_cast(x):
+        return [i['name'] for i in ast.literal_eval(x)[:3]]
+
+    df['director'] = df['crew'].apply(get_director)
+    df['cast'] = df['cast'].apply(get_top_cast)
+    df['genres'] = df['genres'].apply(lambda x: x.replace('|', ' ').lower())
+
+    def create_tags(row):
+        cast = ' '.join(row['cast']) if isinstance(row['cast'], list) else ''
+        genres = row['genres']
+        return f"{cast} {row['director']} {genres}"
+
+    df['tags'] = df.apply(create_tags, axis=1)
+    return df[['title', 'genres', 'cast', 'director', 'tags']]
+
+df = load_data()
+
+# WordCloud Display
+with st.expander("📊 Genre WordCloud"):
+    genre_text = " ".join(df['genres'].dropna())
+    wordcloud = WordCloud(background_color="black").generate(genre_text)
+    fig, ax = plt.subplots()
+    ax.imshow(wordcloud, interpolation='bilinear')
+    ax.axis("off")
+    st.pyplot(fig)
+
+vectorizer = TfidfVectorizer(stop_words='english', max_features=5000)
+tfidf_matrix = vectorizer.fit_transform(df['tags'])
+cosine_sim = cosine_similarity(tfidf_matrix)
+
+def recommend_movies(query):
+    query = query.lower()
+    matches = df[
+        df['title'].str.lower().str.contains(query) |
+        df['genres'].str.lower().str.contains(query) |
+        df['director'].str.lower().str.contains(query) |
+        df['cast'].apply(lambda x: any(query in member.lower() for member in x) if isinstance(x, list) else False)
+    ]
+    if matches.empty:
+        return pd.DataFrame(), "❌ No matches found."
+
+    idx = matches.index[0]
+    scores = list(enumerate(cosine_sim[idx]))
+    scores = sorted(scores, key=lambda x: x[1], reverse=True)[1:11]
+    movie_indices = [i[0] for i in scores]
+
+    return df.iloc[movie_indices][['title', 'genres', 'cast', 'director']], "✅ Recommendations:"
+
+st.sidebar.title("🎥 Movie Finder")
+user_input = st.sidebar.text_input("🔍 Enter title, genre, actor, or director:")
+
+if user_input:
+    results, msg = recommend_movies(user_input)
+    st.subheader(msg)
+    for _, row in results.iterrows():
+        with st.container():
+            st.markdown(f"### 🎬 {row['title']}")
+            st.markdown(f"**🎭 Genres:** {row['genres']}")
+            st.markdown(f"**🎬 Director:** {row['director']}")
+            st.markdown(f"**🌟 Cast:** {', '.join(row['cast']) if isinstance(row['cast'], list) else row['cast']}")
+            st.markdown("---")
+else:
+    st.info("Enter something to get movie suggestions!")
+
+
