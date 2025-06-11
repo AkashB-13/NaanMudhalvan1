@@ -9,8 +9,19 @@ import os
 st.set_page_config(page_title="🎬 AI Movie Recommender", layout="wide")
 st.title("🎬 AI-Based Movie Recommendation System")
 
-# 🔥 Display specific image in the main UI (above everything else)
-st.image("2461.jpg", caption="Featured Movie: 2461", use_column_width=True)
+# 🔽 Info above the image section
+st.markdown("### 🔎 Enter a movie, genre, actor, or director to get recommendations.")
+
+# 🎬 Display 4 small images in a row with gaps
+col1, col2, col3, col4 = st.columns(4)
+with col1:
+    st.image("2461.jpg", caption="2461", use_column_width=True)
+with col2:
+    st.image("2544.jpg", caption="2544", use_column_width=True)
+with col3:
+    st.image("2795.jpg", caption="2795", use_column_width=True)
+with col4:
+    st.image("2844.jpg", caption="2844", use_column_width=True)
 
 @st.cache_data
 def load_data():
@@ -18,12 +29,10 @@ def load_data():
         st.error("❌ One or more files are empty. Please re-upload.")
         st.stop()
 
-    # Load TMDB data
     movies = pd.read_csv("tmdb_5000_movies.csv")
     credits = pd.read_csv("tmdb_5000_credits.csv")
     df = movies.merge(credits, on='title')
 
-    # Clean columns
     df['cast'] = df['cast'].fillna('[]')
     df['crew'] = df['crew'].fillna('[]')
     df['genres'] = df['genres'].fillna('[]')
@@ -58,7 +67,6 @@ def load_data():
         return f"{cast} {row['director']} {row['genres']}"
 
     df['tags'] = df.apply(create_tags, axis=1)
-
     return df[['title', 'genres', 'cast', 'director', 'tags']]
 
 @st.cache_data
@@ -71,11 +79,9 @@ def load_metadata():
     except:
         return pd.DataFrame(columns=['title', 'poster_path'])
 
-# Load data
 df = load_data()
 metadata = load_metadata()
 
-# TF-IDF
 vectorizer = TfidfVectorizer(stop_words='english', max_features=5000)
 tfidf_matrix = vectorizer.fit_transform(df['tags'])
 cosine_sim = cosine_similarity(tfidf_matrix)
@@ -119,4 +125,5 @@ if user_input:
         st.markdown("---")
 else:
     st.info("🔎 Enter a movie, genre, actor, or director to get recommendations.")
+
 
